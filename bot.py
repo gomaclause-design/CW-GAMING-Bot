@@ -1,10 +1,20 @@
+import os
+import threading
 import discord
 from discord.ext import commands
-import os
+from flask import Flask
 
-# Configuración de intents (necesario para detectar cuando entran miembros)
+# 1. Configuración del servidor Flask en el hilo principal (para que Render detecte el puerto al instante)
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "¡El bot de CW Gaming está activo y en línea! 🤖💜"
+
+
+# 2. Configuración del Bot de Discord
 intents = discord.Intents.default()
-intents.members = True  # ¡Importante! Activar en el Discord Developer Portal
+intents.members = True  # Necesario para detectar entradas de usuarios
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -16,15 +26,12 @@ async def on_ready():
 
 @bot.event
 async def on_member_join(member):
-    # Buscar el canal de bienvenida por su nombre (o puedes poner el ID exacto del canal)
     canal_bienvenida = discord.utils.get(member.guild.text_channels, name="👋│bienvenida")
     
     if not canal_bienvenida:
-        # Si no lo encuentra por el nombre exacto con emojis, busca uno que contenga "bienvenida"
         canal_bienvenida = discord.utils.get(member.guild.text_channels, lambda c: "bienvenida" in c.name)
     
     if canal_bienvenida:
-        # Mensaje decorado que diseñamos
         mensaje = (
             "```ini\n"
             "[ 🚀 ¡NUEVO JUGADOR CONECTADO! ]\n"
@@ -39,10 +46,23 @@ async def on_member_join(member):
         )
         await canal_bienvenida.send(mensaje)
 
-# Para correr el bot de manera local o en Render usando variables de entorno
-TOKEN = os.getenv("DISCORD_TOKEN")
+def run_discord_bot():
+    TOKEN = os.getenv("DISCORD_TOKEN")
+    if TOKEN:
+        bot.run(TOKEN)
+    else:
+        print("❌ Error: No se encontró la variable de entorno DISCORD_TOKEN.")
 
-if TOKEN:
-    bot.run(TOKEN)
-else:
-    print("❌ Error: No se encontró la variable de entorno DISCORD_TOKEN.")
+
+# 3. Ejecución: El bot de Discord corre en segundo plano y Flask toma el control principal del puerto
+if __name__ == "__main__":
+    # Lanzamos el bot de Discord en un hilo independiente
+    discord_thread = threading.Thread(target=run_discord_bot)
+    discord_thread.daemon = True
+    discord_thread.start()
+    print("🤖 Bot de Discord lanzado en segundo plano.")
+
+    # Flask se queda ejecutándose en el hilo principal abriendo el puerto para Render
+    port = int(os.environ.get("PORT", 10000))
+    print(f"🌐 Iniciando servidor web de Flask en el puerto {port}...")
+    app.run(host="0.0.0.0", port=port)
